@@ -1,0 +1,5 @@
+HELLO = b"HELLO"
+
+SESSION = b"SESSION"
+
+DATA = b"DATA"
