@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
-from identity import load_keys, get_peer_id
+from .identity import load_keys, get_peer_id
 from pydantic import BaseModel
 from typing import List, Dict
 import time
@@ -59,4 +59,5 @@ async def get_peers(file: str = None):
             })
     
     return {"peers": active_peers}
+
 
