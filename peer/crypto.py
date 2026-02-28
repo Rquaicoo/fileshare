@@ -2,6 +2,7 @@ import os, hashlib
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
+
 """
 Peer A → Peer B:
     HELLO | peer_id | public_key
@@ -16,7 +17,6 @@ Peer B → Peer A:
 
 Both sides:
     - switch to AES encryption
-
 """
 
 def generate_aes_key():

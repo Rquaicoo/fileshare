@@ -7,6 +7,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
 import asyncio
 import os
+import socket
 from pathlib import Path
 from typing import Dict, List
 import httpx
@@ -233,11 +234,28 @@ async def list_downloads():
     return {"downloads": sorted(files, key=lambda x: x["name"])}
 
 
+def get_local_ip():
+    """Get the local machine's actual IP address."""
+    import socket
+    try:
+        # Connect to a dummy server to determine local IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        return "127.0.0.1"  # Fallback
+
+
 @app.post("/api/register")
-async def register_peer(port: int):
+async def register_peer(port: int, ip: str = None):
     """Register this peer with the discovery service."""
     try:
         update_state("port", port)
+        
+        # Use provided IP or detect actual network IP
+        peer_ip = ip if ip else get_local_ip()
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             files = [f["name"] for f in ui_state["shared_files"]]
@@ -246,18 +264,23 @@ async def register_peer(port: int):
                 "peer_id": ui_state["peer_id"],
                 "public_key": ui_state["public_key"],
                 "port": port,
-                "files": files
+                "files": files,
+                "ip": peer_ip  # Explicitly send IP address
             }
             
             response = await client.post(f"{DISCOVERY_URL}/register", json=payload)
             update_state("registered", True)
             
+            print(f"[REGISTER] Registered with discovery as {peer_ip}:{port}")
+            
             return {
                 "status": "registered",
                 "peer_id": ui_state["peer_id"][:16] + "...",
-                "port": port
+                "port": port,
+                "ip": peer_ip
             }
     except Exception as e:
+        print(f"[REGISTER ERROR] {str(e)}")
         return {"status": "error", "error": str(e)}
 
 

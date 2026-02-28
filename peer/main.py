@@ -14,11 +14,17 @@ class RegisterRequest(BaseModel):
     public_key: str
     port: int
     files: List[str]
+    ip: str = None  # Peer can optionally provide its own IP
     
 
 @app.post("/register")
 async def register_peer(request: Request, data: RegisterRequest):
-    client_ip = request.client.host # Get the client's IP address
+    # Use provided IP, fallback to client IP detection
+    client_ip = data.ip if data.ip else request.client.host
+    
+    # Map localhost to actual IP for multi-device scenarios
+    if client_ip in ["127.0.0.1", "localhost"]:
+        client_ip = request.client.host  # Still use request IP as fallback
     
     PEERS[data.peer_id] = {
         "ip": client_ip,
@@ -28,7 +34,9 @@ async def register_peer(request: Request, data: RegisterRequest):
         "last_seen": time.time()
     }
     
-    return {"message": "registered"}
+    print(f"[DISCOVERY] Registered peer {data.peer_id[:8]}... at {client_ip}:{data.port}")
+    
+    return {"message": "registered", "ip": client_ip}
 
 
 @app.get("/heartbeat")

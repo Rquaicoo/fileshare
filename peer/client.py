@@ -9,6 +9,9 @@ import httpx
 
 # Maximum concurrent chunk downloads
 MAX_CONCURRENT_CHUNKS = 4
+# Timeout for connections (increased for large files)
+CONNECT_TIMEOUT = 10
+READ_TIMEOUT = 30
 
 
 async def get_file_metadata(ip, port, filename):
@@ -17,7 +20,11 @@ async def get_file_metadata(ip, port, filename):
     peer_id = get_peer_id(public_key)
     
     try:
-        reader, writer = await asyncio.open_connection(ip, port)
+        print(f"[METADATA] Connecting to {ip}:{port}...")
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port),
+            timeout=CONNECT_TIMEOUT
+        )
         
         public_key_pem = public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
@@ -75,7 +82,10 @@ async def download_single_chunk(ip, port, filename, chunk_index):
     peer_id = get_peer_id(public_key)
     
     try:
-        reader, writer = await asyncio.open_connection(ip, port)
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port),
+            timeout=CONNECT_TIMEOUT
+        )
         
         public_key_pem = public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
@@ -119,12 +129,14 @@ async def download_single_chunk(ip, port, filename, chunk_index):
 async def connect_to_peer(ip, port, filename, output_dir="downloads"):
     """Connect to a peer and download a file with concurrent chunk downloads."""
     try:
-        print(f"Connecting to peer at {ip}:{port}")
+        print(f"[DOWNLOAD] Connecting to peer at {ip}:{port}")
+        print(f"[DOWNLOAD] Downloading file: {filename}")
         
         # Get metadata
         meta, _ = await get_file_metadata(ip, port, filename)
         if not meta:
-            print(f"Failed to get metadata for {filename}")
+            print(f"[ERROR] Failed to get metadata for {filename}")
+            print(f"[ERROR] Peer at {ip}:{port} may be offline or file doesn't exist")
             return False
         
         fname = meta["filename"]
