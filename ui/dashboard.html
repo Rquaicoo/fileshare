@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P File Sharing - Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div>
+                    <h1>🌐 P2P File Sharing</h1>
+                    <p class="peer-id" style="margin-top: 5px;">Peer ID: <span id="peer-id">Loading...</span></p>
+                </div>
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span id="status-text">Online</span>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- Left Column -->
+            <div>
+                <!-- Upload Panel -->
+                <div class="panel">
+                    <h2>Share Files</h2>
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📤</div>
+                        <div class="upload-text">Drag files here or click to upload</div>
+                        <button class="upload-button" onclick="document.getElementById('fileInput').click()">
+                            Choose Files
+                        </button>
+                        <input type="file" id="fileInput" multiple>
+                    </div>
+                </div>
+
+                <!-- Shared Files Panel -->
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>Shared Files</h2>
+                    <div id="sharedFiles" class="file-list">
+                        <div class="empty-state">
+                            <div class="empty-icon">📁</div>
+                            <p>No files shared yet</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div>
+                <!-- Peers Panel -->
+                <div class="panel">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0;">Online Peers</h2>
+                        <button class="refresh-btn" onclick="refreshPeers()">🔄</button>
+                    </div>
+                    <div id="peersList" class="peers-list">
+                        <div class="empty-state" style="grid-column: 1/-1;">
+                            <div class="empty-icon">👥</div>
+                            <p>No peers online</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search & Download Panel -->
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>Download Files</h2>
+                    <div class="search-section">
+                        <div class="search-box">
+                            <input type="text" id="searchInput" placeholder="Search for files...">
+                            <button class="btn btn-primary" onclick="searchFiles()">Search</button>
+                        </div>
+                    </div>
+                    <div id="searchResults"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Downloads Section -->
+        <div class="panel">
+            <h2>Downloaded Files</h2>
+            <div id="downloadedFiles" class="file-list">
+                <div class="empty-state">
+                    <div class="empty-icon">📥</div>
+                    <p>No files downloaded yet</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/scripts.js"></script>
+</body>
+</html>

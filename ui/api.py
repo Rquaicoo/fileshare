@@ -5,6 +5,7 @@ Provides REST endpoints for dashboard interaction.
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 import asyncio
 import os
 import socket
@@ -25,6 +26,10 @@ from .state import ui_state, update_state
 from .templates import get_dashboard_html
 
 app = FastAPI(title="P2P File Sharing UI")
+
+# Mount static files (CSS, JS)
+static_dir = Path(__file__).parent
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 @app.on_event("startup")
