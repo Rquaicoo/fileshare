@@ -8,15 +8,15 @@ import os
 import sys
 import argparse
 
-# Add peer directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add project root to path for package imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from identity import load_keys, get_peer_id
-from server import start_server
-from client import download_from_discovery
+from peer.identity import load_keys, get_peer_id
+from peer.server import start_server
+from peer.client import download_from_discovery
 import httpx
 import uvicorn
-from main import app as discovery_app
+from peer.main import app as discovery_app
 from threading import Thread
 import time
 
