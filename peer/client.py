@@ -230,15 +230,3 @@ async def download_from_discovery(discovery_url, filename, output_dir="downloads
     except Exception as e:
         print(f"Error querying discovery service: {e}")
         return False
-
-
-async def main():
-    """Example usage."""
-    discovery_url = "http://localhost:8000"  # Discovery service URL
-    filename = "test.txt"
-    
-    await download_from_discovery(discovery_url, filename)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

@@ -2,48 +2,13 @@ import asyncio
 import os
 from .identity import get_peer_id, load_keys
 from .crypto import aes_encrypt, generate_aes_key, encrypt_session_key, decrypt_session_key, aes_decrypt
-from fastapi import FastAPI, Request
 from .protocol import HELLO, SESSION
 from cryptography.hazmat.primitives import serialization
 from .chunk_manager import get_file_metadata, read_chunk
 
 """
-Server-side logic for handling peer connections and the initial handshake protocol. 
-This includes receiving the HELLO message, verifying the peer ID, generating an AES session key, encrypting it with the peer's public key, 
-and sending it back in a SESSION message.
-
-Peer A → Peer B:
-    HELLO | peer_id | public_key
-
-Peer B:
-    - verifies peer_id matches public_key
-    - generates AES session key
-    - encrypts AES key with A’s public key
-
-Peer B → Peer A:
-    SESSION_KEY | encrypted_key
-
-Both sides:
-    - switch to AES encryption
-
-HELLO: Initial message sent by a peer to initiate a connection. It includes the peer's ID and public key.
-for example: HELLO|peer_id|public_key
-
-
-- Files are split into fixed-size chunks
-- Client requests specific chunk indexes
-- Server sends encrypted chunks
-- Client downloads chunks concurrently
-- File is reassembled correctly
-- Integrity is verified (SHA256)
-
-OTHER MESSAGES: 
-META|filename|filesize|chunksize|total_chunks|file_hash
-GET|filename|chunk_index
-CHUNK|chunk_index|bytes
-DONE
-
-
+Server-side logic for handling peer connections and encrypted file transfers.
+Protocol: HELLO -> SESSION -> META/GET/CHUNK/DONE messages (AES-encrypted)
 """
 async def handle_peer(reader, writer, shared_dir="shared"):
     # Receive HELLO message with peer_id and public_key

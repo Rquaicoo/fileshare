@@ -6,7 +6,6 @@ Shows the complete flow from registration through download.
 import asyncio
 import os
 import sys
-from pathlib import Path
 
 # Add peer directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'peer'))

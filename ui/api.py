@@ -4,11 +4,9 @@ Provides REST endpoints for dashboard interaction.
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-import asyncio
 import os
-import socket
 from pathlib import Path
 from typing import Dict, List
 import httpx

@@ -13,7 +13,6 @@ import subprocess
 import time
 import sys
 import os
-from threading import Thread
 
 
 def print_banner():
