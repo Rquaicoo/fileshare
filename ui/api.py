@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, List
 import httpx
 import sys
+import asyncio
 
 # Add parent directory to path for peer imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,6 +29,49 @@ app = FastAPI(title="P2P File Sharing UI")
 # Mount static files (CSS, JS)
 static_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+async def heartbeat_loop():
+    """Send periodic heartbeats to keep peer registered with discovery service."""
+    while True:
+        try:
+            await asyncio.sleep(30)  # Heartbeat every 30 seconds
+            if not ui_state["peer_id"]:
+                continue
+            
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{DISCOVERY_URL}/heartbeat",
+                    params={"peer_id": ui_state["peer_id"]}
+                )
+                print(f"[HEARTBEAT] Sent: {response.json()}")
+        except Exception as e:
+            print(f"[HEARTBEAT ERROR] {str(e)}")
+
+
+async def auto_register():
+    """Register with discovery service on startup."""
+    try:
+        await asyncio.sleep(1)  # Wait for startup to complete
+        
+        files = [f["name"] for f in ui_state["shared_files"]]
+        peer_ip = get_local_ip()
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            payload = {
+                "peer_id": ui_state["peer_id"],
+                "public_key": ui_state["public_key"],
+                "port": 9000,  # File transfer port
+                "files": files,
+                "ip": peer_ip
+            }
+            
+            response = await client.post(f"{DISCOVERY_URL}/register", json=payload)
+            update_state("registered", True)
+            print(f"[AUTO-REGISTER] Registered with discovery at {peer_ip}:9000")
+            print(f"[AUTO-REGISTER] Response: {response.json()}")
+    except Exception as e:
+        print(f"[AUTO-REGISTER ERROR] Failed to register with discovery: {str(e)}")
 
 
 @app.on_event("startup")
@@ -49,6 +93,10 @@ async def startup():
     os.makedirs(DOWNLOADS_DIR, exist_ok=True)
     
     refresh_shared_files()
+    
+    # Start automatic registration and heartbeat tasks
+    asyncio.create_task(auto_register())
+    asyncio.create_task(heartbeat_loop())
 
 
 def refresh_shared_files():
