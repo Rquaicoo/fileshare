@@ -21,11 +21,12 @@ async def handle_peer(reader, writer, shared_dir="shared"):
     
     _, peer_id, public_key_pem = data.split(b"|", 2)
     
+    # Load the public key from PEM bytes
     peer_public_key = serialization.load_pem_public_key(public_key_pem)
     
     # Generate AES session key and encrypt it with the peer's public key
     aes_key = generate_aes_key()
-    encrypted_key = encrypt_session_key(public_key_pem, aes_key)
+    encrypted_key = encrypt_session_key(peer_public_key, aes_key)
     
     # Send SESSION message with the encrypted AES key
     writer.write(SESSION + b"|" + encrypted_key)
@@ -48,7 +49,16 @@ async def serve_file(reader, writer, aes_key, shared_dir="shared"):
     """Handle file transfer requests from peer."""
     try:
         while True:
-            encrypted_message = await reader.read(4096)
+            try:
+                # Read message length prefix (4 bytes)
+                length_bytes = await reader.readexactly(4)
+                msg_length = int.from_bytes(length_bytes, 'big')
+                
+                # Read the encrypted message
+                encrypted_message = await reader.readexactly(msg_length)
+            except asyncio.IncompleteReadError:
+                break
+            
             if not encrypted_message:
                 break
                 
@@ -61,13 +71,15 @@ async def serve_file(reader, writer, aes_key, shared_dir="shared"):
                 
                 if not os.path.exists(file_path):
                     error_msg = f"ERROR|File not found: {filename}"
-                    writer.write(aes_encrypt(aes_key, error_msg.encode()))
+                    encrypted_response = aes_encrypt(aes_key, error_msg.encode())
+                    writer.write(len(encrypted_response).to_bytes(4, 'big') + encrypted_response)
                     await writer.drain()
                     continue
                     
                 meta = get_file_metadata(file_path)
                 meta_msg = f"META|{meta['filename']}|{meta['size']}|{meta['chunksize']}|{meta['chunks']}|{meta['hash']}"
-                writer.write(aes_encrypt(aes_key, meta_msg.encode()))
+                encrypted_response = aes_encrypt(aes_key, meta_msg.encode())
+                writer.write(len(encrypted_response).to_bytes(4, 'big') + encrypted_response)
                 await writer.drain()
                 print(f"Sent metadata for {filename}")
                 
@@ -78,13 +90,15 @@ async def serve_file(reader, writer, aes_key, shared_dir="shared"):
                 
                 if not os.path.exists(file_path):
                     error_msg = f"ERROR|File not found: {filename}"
-                    writer.write(aes_encrypt(aes_key, error_msg.encode()))
+                    encrypted_response = aes_encrypt(aes_key, error_msg.encode())
+                    writer.write(len(encrypted_response).to_bytes(4, 'big') + encrypted_response)
                     await writer.drain()
                     continue
                     
                 data = read_chunk(file_path, chunk_index)
                 payload = f"CHUNK|{chunk_index}|".encode() + data
-                writer.write(aes_encrypt(aes_key, payload))
+                encrypted_response = aes_encrypt(aes_key, payload)
+                writer.write(len(encrypted_response).to_bytes(4, 'big') + encrypted_response)
                 await writer.drain()
                 print(f"Sent chunk {chunk_index} of {filename}")
                 

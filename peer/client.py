@@ -44,10 +44,14 @@ async def get_file_metadata(ip, port, filename):
         
         # Request metadata
         meta_request = f"META|{filename}"
-        writer.write(aes_encrypt(aes_key, meta_request.encode()))
+        encrypted_request = aes_encrypt(aes_key, meta_request.encode())
+        writer.write(len(encrypted_request).to_bytes(4, 'big') + encrypted_request)
         await writer.drain()
         
-        encrypted_meta = await reader.read(4096)
+        # Read encrypted metadata (with length prefix)
+        length_bytes = await reader.readexactly(4)
+        msg_length = int.from_bytes(length_bytes, 'big')
+        encrypted_meta = await reader.readexactly(msg_length)
         meta_response = aes_decrypt(aes_key, encrypted_meta).decode()
         
         writer.close()
@@ -103,12 +107,23 @@ async def download_single_chunk(ip, port, filename, chunk_index):
         _, encrypted_key = data.split(b"|", 1)
         aes_key = decrypt_session_key(private_key, encrypted_key)
         
-        # Request chunk
+        # Request chunk with length prefix
         get_request = f"GET|{filename}|{chunk_index}"
-        writer.write(aes_encrypt(aes_key, get_request.encode()))
+        encrypted_request = aes_encrypt(aes_key, get_request.encode())
+        writer.write(len(encrypted_request).to_bytes(4, 'big') + encrypted_request)
         await writer.drain()
         
-        encrypted_chunk = await reader.read(1024 * 1024 + 100)
+        # Read encrypted chunk with length prefix
+        try:
+            length_bytes = await reader.readexactly(4)
+            msg_length = int.from_bytes(length_bytes, 'big')
+            encrypted_chunk = await reader.readexactly(msg_length)
+        except asyncio.IncompleteReadError as e:
+            print(f"Error reading chunk {chunk_index}: incomplete read")
+            writer.close()
+            await writer.wait_closed()
+            return None
+        
         chunk_data = aes_decrypt(aes_key, encrypted_chunk)
         
         writer.close()
