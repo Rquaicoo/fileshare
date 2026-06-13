@@ -4,7 +4,7 @@ Provides REST endpoints for dashboard interaction.
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import os
 from pathlib import Path
@@ -12,6 +12,11 @@ from typing import Dict, List
 import httpx
 import sys
 import asyncio
+import io
+import base64
+import qrcode
+from pyzbar.pyzbar import decode
+from PIL import Image
 
 # Add parent directory to path for peer imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -93,6 +98,10 @@ async def startup():
     os.makedirs(DOWNLOADS_DIR, exist_ok=True)
     
     refresh_shared_files()
+    
+    # Initialize connected peers list
+    if "connected_peers" not in ui_state:
+        ui_state["connected_peers"] = {}
     
     # Start automatic registration and heartbeat tasks
     asyncio.create_task(auto_register())
@@ -372,6 +381,224 @@ async def delete_downloaded_file(filename: str):
             raise HTTPException(status_code=404, detail="File not found")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
+# QR CODE ENDPOINTS
+# ============================================================================
+
+@app.get("/api/qr/generate")
+async def generate_qr(full_mode: bool = False):
+    """Generate a QR code containing peer info.
+    
+    Args:
+        full_mode: If True, include IP:port for direct connection.
+                   If False, include peer_id only (discovery lookup).
+    """
+    try:
+        peer_id = ui_state["peer_id"]
+        if not peer_id:
+            raise HTTPException(status_code=400, detail="Peer ID not initialized")
+        
+        ip = get_local_ip()
+        
+        if full_mode:
+            # Full connection URL: http://ip:8080
+            dashboard_url = f"http://{ip}:8080"
+            qr_data = dashboard_url
+            qr_label = dashboard_url
+        else:
+            # Peer ID only (discovery lookup)
+            qr_data = peer_id
+            qr_label = f"{peer_id[:16]}"
+        
+        # Create QR code
+        qr = qrcode.QRCode(
+            version=None,  # Auto-determine version
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        
+        # Create image
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Convert to base64
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        img_base64 = base64.b64encode(buffer.getvalue()).decode()
+        
+        return {
+            "status": "success",
+            "peer_id": peer_id,
+            "mode": "full_connection" if full_mode else "discovery_lookup",
+            "qr_data": qr_data,
+            "qr_label": qr_label,
+            "dashboard_url": f"http://{ip}:8080" if full_mode else None,
+            "qr_image": f"data:image/png;base64,{img_base64}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/qr/decode")
+async def decode_qr(file: UploadFile = File(...)):
+    """Decode a QR code image and extract peer connection info."""
+    try:
+        # Read uploaded file
+        contents = await file.read()
+        
+        # Try to decode with pyzbar
+        try:
+            img = Image.open(io.BytesIO(contents))
+            decoded_objects = decode(img)
+            
+            if not decoded_objects:
+                raise HTTPException(status_code=400, detail="No QR code found in image")
+            
+            # Extract data from first QR code
+            qr_data = decoded_objects[0].data.decode('utf-8')
+            
+            # Parse QR data - can be URL, peer_id, or "peer_id|ip|port"
+            if qr_data.startswith('http://') or qr_data.startswith('https://'):
+                # Dashboard URL
+                return {
+                    "status": "success",
+                    "mode": "dashboard_url",
+                    "url": qr_data,
+                    "display_text": qr_data
+                }
+            elif '|' in qr_data:
+                # Full connection string
+                parts = qr_data.split('|')
+                if len(parts) != 3:
+                    raise HTTPException(status_code=400, detail="Invalid connection string format")
+                
+                peer_id, ip, port_str = parts
+                try:
+                    port = int(port_str)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid port number")
+                
+                # Validate peer ID format (64 hex characters)
+                if len(peer_id) != 64 or not all(c in '0123456789abcdef' for c in peer_id):
+                    raise HTTPException(status_code=400, detail="Invalid peer ID format")
+                
+                return {
+                    "status": "success",
+                    "mode": "direct_connect",
+                    "peer_id": peer_id,
+                    "ip": ip,
+                    "port": port
+                }
+            else:
+                # Peer ID only
+                peer_id = qr_data
+                
+                # Validate peer ID format (64 hex characters)
+                if len(peer_id) != 64 or not all(c in '0123456789abcdef' for c in peer_id):
+                    raise HTTPException(status_code=400, detail="Invalid peer ID format")
+                
+                return {
+                    "status": "success",
+                    "mode": "discovery_lookup",
+                    "peer_id": peer_id
+                }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to decode QR: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/peers/lookup")
+async def lookup_peer(peer_id: str):
+    """Look up a specific peer by peer ID."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{DISCOVERY_URL}/peers")
+            peers_data = response.json()
+            
+            # Find matching peer
+            for peer in peers_data.get("peers", []):
+                if peer["peer_id"] == peer_id:
+                    return {
+                        "status": "found",
+                        "peer": {
+                            "peer_id": peer["peer_id"],
+                            "peer_id_short": peer["peer_id"][:16] + "...",
+                            "ip": peer["ip"],
+                            "port": peer["port"],
+                            "files": peer.get("files", []),
+                            "files_count": len(peer.get("files", []))
+                        }
+                    }
+            
+            raise HTTPException(status_code=404, detail="Peer not found in discovery service")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/peers/connect")
+async def connect_to_direct_peer(peer_id: str, ip: str, port: int):
+    """Establish direct connection to a peer via IP:port.
+    
+    Bypasses discovery service for direct P2P pairing.
+    """
+    try:
+        # Validate inputs
+        if len(peer_id) != 64 or not all(c in '0123456789abcdef' for c in peer_id):
+            raise HTTPException(status_code=400, detail="Invalid peer ID")
+        
+        # Try to establish connection to verify peer is reachable
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # Simple connection test
+                response = await client.get(f"http://{ip}:{port}")
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Cannot reach peer at {ip}:{port}")
+        
+        # Add to connected peers list
+        connected_peer = {
+            "peer_id": peer_id,
+            "peer_id_short": peer_id[:16] + "...",
+            "ip": ip,
+            "port": port,
+            "status": "connected"
+        }
+        
+        # Store in state (using peer_id as key to avoid duplicates)
+        if "connected_peers" not in ui_state:
+            ui_state["connected_peers"] = {}
+        
+        ui_state["connected_peers"][peer_id] = connected_peer
+        
+        return {
+            "status": "connected",
+            "peer": connected_peer
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/peers/connected")
+async def get_connected_peers():
+    """Get list of directly connected peers."""
+    connected = ui_state.get("connected_peers", {})
+    return {
+        "connected_peers": list(connected.values()),
+        "count": len(connected)
+    }
 
 
 if __name__ == "__main__":

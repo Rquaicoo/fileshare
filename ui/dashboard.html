@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>P2P File Sharing - Dashboard</title>
     <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 </head>
 <body>
     <div class="container">
@@ -14,9 +15,13 @@
                     <h1>🌐 P2P File Sharing</h1>
                     <p class="peer-id" style="margin-top: 5px;">Peer ID: <span id="peer-id">Loading...</span></p>
                 </div>
-                <div class="status-badge">
-                    <div class="status-dot"></div>
-                    <span id="status-text">Online</span>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn btn-secondary" onclick="openGenerateQRModal()" title="Generate QR Code">📱 Generate QR</button>
+                    <button class="btn btn-secondary" onclick="openScanQRModal()" title="Scan QR Code">📸 Scan QR</button>
+                    <div class="status-badge">
+                        <div class="status-dot"></div>
+                        <span id="status-text">Online</span>
+                    </div>
                 </div>
             </div>
         </header>
@@ -65,6 +70,20 @@
                     </div>
                 </div>
 
+                <!-- Connected Peers Panel -->
+                <div class="panel" style="margin-top: 20px; border: 2px solid #4CAF50;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0; color: #4CAF50;">🔗 Connected Peers</h2>
+                    </div>
+                    <div id="connectedPeersList" class="peers-list">
+                        <div class="empty-state" style="grid-column: 1/-1;">
+                            <div class="empty-icon">🔗</div>
+                            <p>No connected peers yet</p>
+                            <p style="font-size: 0.85em; color: #999;">Scan a QR code to connect</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Search & Download Panel -->
                 <div class="panel" style="margin-top: 20px;">
                     <h2>Download Files</h2>
@@ -91,6 +110,106 @@
         </div>
     </div>
 
+    <!-- Generate QR Modal -->
+    <div id="generateQRModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Generate QR Code</h2>
+                <button class="modal-close" onclick="closeModal('generateQRModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="text-align: center; margin-bottom: 20px;">Share this QR code with others to help them connect to you.</p>
+                
+                <!-- Mode Toggle -->
+                <div style="text-align: center; margin-bottom: 20px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+                    <label style="font-weight: 600; cursor: pointer;">
+                        <input type="radio" name="qrMode" value="discovery" checked onchange="updateQRMode()"> 
+                        📍 Discovery Lookup
+                    </label>
+                    <label style="font-weight: 600; cursor: pointer;">
+                        <input type="radio" name="qrMode" value="direct" onchange="updateQRMode()">
+                        🔗 Direct Connect
+                    </label>
+                </div>
+                <p style="text-align: center; font-size: 0.85em; color: #999; margin-bottom: 15px;">
+                    <span id="modeDescription">Requires discovery service lookup</span>
+                </p>
+                
+                <div id="qrContainer" style="text-align: center; margin: 20px 0;">
+                    <div style="display: flex; justify-content: center; align-items: center; min-height: 300px;">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+                <div style="margin-top: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">QR Label:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="qrLabelDisplay" readonly style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
+                        <button class="btn btn-primary" onclick="copyQRLabel()">Copy</button>
+                    </div>
+                </div>
+                <div style="margin-top: 15px; display: none;" id="urlFieldContainer">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">Connection URL:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="connectionURLDisplay" readonly style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
+                        <button class="btn btn-primary" onclick="copyConnectionURL()">Copy</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="downloadQRCode()">Download QR</button>
+                <button class="btn btn-primary" onclick="closeModal('generateQRModal')">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scan QR Modal -->
+    <div id="scanQRModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Scan QR Code</h2>
+                <button class="modal-close" onclick="closeModal('scanQRModal')">&times;</button>
+            </div>
+            <div class="modal-tabs">
+                <button class="tab-btn active" onclick="switchTab('webcam')">📷 Webcam</button>
+                <button class="tab-btn" onclick="switchTab('upload')">📁 Upload</button>
+            </div>
+            <div class="modal-body">
+                <!-- Webcam Tab -->
+                <div id="webcamTab" class="tab-content active">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <p>Allow camera access to scan QR codes</p>
+                    </div>
+                    <div id="cameraContainer" style="position: relative; margin: 20px 0; border-radius: 8px; overflow: hidden; background: #000;">
+                        <video id="cameraFeed" style="width: 100%; display: block; max-height: 400px;"></video>
+                        <canvas id="canvasOverlay" style="position: absolute; top: 0; left: 0; display: none;"></canvas>
+                    </div>
+                    <div style="text-align: center; margin-top: 15px;">
+                        <button class="btn btn-primary" id="startCameraBtn" onclick="startCamera()">Start Camera</button>
+                        <button class="btn btn-secondary" id="stopCameraBtn" onclick="stopCamera()" style="display: none;">Stop Camera</button>
+                    </div>
+                    <div id="webcamStatus" style="text-align: center; margin-top: 10px; color: #666; font-size: 0.9em;"></div>
+                </div>
+
+                <!-- Upload Tab -->
+                <div id="uploadTab" class="tab-content hidden">
+                    <div style="text-align: center; margin: 20px 0;">
+                        <p>Upload a QR code image to scan</p>
+                    </div>
+                    <div id="uploadQRArea" class="upload-area-qr" ondrop="handleQRDrop(event)" ondragover="handleQRDragOver(event)" ondragleave="handleQRDragLeave(event)">
+                        <div style="font-size: 2em; margin-bottom: 10px;">📸</div>
+                        <div style="margin-bottom: 10px;">Drag QR image here or click</div>
+                        <button class="btn btn-primary" onclick="document.getElementById('qrFileInput').click()">Choose File</button>
+                        <input type="file" id="qrFileInput" accept="image/*" onchange="handleQRFileSelect(event)" style="display: none;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Overlay -->
+    <div id="modalOverlay" class="modal-overlay hidden" onclick="closeAllModals()"></div>
+
     <script src="/static/scripts.js"></script>
 </body>
 </html>
+
